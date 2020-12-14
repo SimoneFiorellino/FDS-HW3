@@ -1,6 +1,6 @@
  
 
-# def take_step(i1, i2, alpha, y, placeholder_svm, C, X):
+# def take_step(i1, i2, alpha, y, placeholder_svm, C, x):
 #     if i1 == i2:
 #         return 0
 
@@ -16,9 +16,9 @@
 #         H = min(C, alpha[i2] - alph1)
 #     if L == H:
 #         return 0
-#     k11 = kernel(X[i1], X[i1])
-#     k12 = kernel(X[i1], X[i2])
-#     k22 = kernel(X[i2], X[i2])
+#     k11 = self.kernel(x[i1], x[i1])
+#     k12 = self.kernel(x[i1], x[i2])
+#     k22 = self.kernel(x[i2], x[i2])
 #     eta = k11 + k22 - 2 * k12
 #     if eta > 0: 
 #         a2 = alpha[i2] + y[i2] * (E1 - E2) / eta
@@ -39,13 +39,13 @@
 #         return 0
 #     a1 = alpha[i1] + s * (alpha[i2] - a2)
 #     if 0 < a1 < C:
-#         b = b - E1 - y1 * (a1 - alpha[i1]) * kernel(X[i1], X[i1]) - y[i2] * (a2 - alpha[i2]) * kernel(X[i1], X[i2])
+#         b = b - E1 - y1 * (a1 - alpha[i1]) * self.kernel(x[i1], x[i1]) - y[i2] * (a2 - alpha[i2]) * self.kernel(x[i1], x[i2])
 #     elif 0 < a2 < C:
-#         b = b - E2 - y1 * (a1 - alpha[i1]) * kernel(X[i1], X[i2]) - y[i2] * (a2 - alpha[i2]) * kernel(X[i2], X[i2])
+#         b = b - E2 - y1 * (a1 - alpha[i1]) * self.kernel(x[i1], x[i2]) - y[i2] * (a2 - alpha[i2]) * self.kernel(x[i2], x[i2])
 #     else:
 #         if L != H:
-#            b1 = b - E1 - y1 * (a1 - alpha[i1]) * kernel(X[i1], X[i1]) - y[i2] * (a2 - alpha[i2]) * kernel(X[i1], X[i2]) 
-#            b2 = b - E2 - y1 * (a1 - alpha[i1]) * kernel(X[i1], X[i2]) - y[i2] * (a2 - alpha[i2]) * kernel(X[i2], X[i2])
+#            b1 = b - E1 - y1 * (a1 - alpha[i1]) * self.kernel(x[i1], x[i1]) - y[i2] * (a2 - alpha[i2]) * self.kernel(x[i1], x[i2]) 
+#            b2 = b - E2 - y1 * (a1 - alpha[i1]) * self.kernel(x[i1], x[i2]) - y[i2] * (a2 - alpha[i2]) * self.kernel(x[i2], x[i2])
 #            b = (b1 + b2) / 2
 #     E1 = placeholder_svm(i1) - y1
 #     E2 = placeholder_svm(i2) - y[i2]
@@ -67,72 +67,122 @@
 import numpy as np
 
 
-def kernel(x_i, x_j):
-    return np.sum(np.dot(x_i, x_j))
+class SVM:
+    
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.alpha = None
+        self.b = None
 
 
-def gamma(u, X, y, alpha, b):
-    result = 0
-    m = X.shape[0]
-    for i in range(0, m):
-        result += alpha[i] * y[i] * kernel(X[i], u)
-    return result + b
-
-def error(x_i, y_i, x, y, alpha, b):
-    return gamma(x_i, x, y, alpha, b) - y_i
+    def kernel(self, x_i, x_j):
+        return np.sum(np.dot(x_i, x_j))
 
 
-def smo(C, tol, max_passes, X, y, eps):
-    m = X.shape[0]
-    E = np.zeros((m, 1))
-    alpha = np.zeros((m, 1))
-    b = 0 
-    passes = 0
-    while passes < max_passes:
-        num_changed_alphas = 0
-        for i in range(m):
-            E[i] = gamma(X[i, :], X, y, alpha, b) - y[i]
-            if ((y[i] * E[i] < -tol) and alpha[i] < C) or ((y[i] * E[i] > tol) and alpha[i] > 0):
-                j = np.random.randint(0, m)
-                while j == i:
+    def gamma(self, u):
+        result = 0
+        m = self.x.shape[0]
+        for i in range(0, m):
+            result += self.alpha[i] * self.y[i] * self.kernel(self.x[i], u)
+        return result + self.b
+
+
+    def _error(self, x_i, y_i):
+        return self.gamma(x_i) - y_i
+
+
+    def simplified_smo(self, C, tol, eps, max_passes):
+        m = self.x.shape[0]
+        E = np.zeros((m, 1))
+        self.alpha = np.zeros((m, 1))
+        self.b = 0 
+        passes = 0
+        while passes < max_passes:
+            num_changed_alphas = 0
+            for i in range(m):
+                E[i] = self.gamma(self.x[i, :]) - self.y[i]
+                if ((self.y[i] * E[i] < -tol) and self.alpha[i] < C) or ((self.y[i] * E[i] > tol) and self.alpha[i] > 0):
                     j = np.random.randint(0, m)
-                E[j] = gamma(X[j, :], X, y, alpha, b) - y[j]
-                ai_old, aj_old = alpha[i], alpha[j]
-                if y[i] != y[j]:
-                    L = max(0, alpha[j] - alpha[i])
-                    H = min(C, C + alpha[j] - alpha[i])
-                else:
-                    L = max(0, alpha[i] + alpha[j] - C)
-                    H = min(C, alpha[i] + alpha[j])
-                if L == H:
-                    continue
-                eta = 2 * kernel(X[i], X[j]) - kernel(X[i], X[i]) - kernel(X[j], X[j])
-                if eta >= 0:
-                    continue
-                aj_new = aj_old - y[j] * (E[i] - E[j]) / eta
-                if aj_new > H:
-                    aj_new = H
-                elif aj_new < L:
-                    aj_new = L
-                if abs(aj_new - aj_old) < eps:
-                    continue
-                ai_new = ai_old + y[i] * y[j] * (aj_old - aj_new)
-                if 0 < ai_new < C:
-                    b = b - E[i] - y[i] * (ai_new - ai_old) * kernel(X[i], X[i]) - y[j] * (aj_new - aj_old) * kernel(X[i], X[j])
-                elif 0 < aj_new < C:
-                    b = b - E[j] - y[i] * (ai_new - ai_old) * kernel(X[i], X[j]) - y[j] * (aj_new - aj_old) * kernel(X[j], X[j])
-                else:
-                    b1 = b - E[i] - y[i] * (ai_new - ai_old) * kernel(X[i], X[i]) - y[j] * (aj_new - aj_old) * kernel(X[i], X[j])
-                    b2 = b - E[j] - y[i] * (ai_new - ai_old) * kernel(X[i], X[j]) - y[j] * (aj_new - aj_old) * kernel(X[j], X[j])
-                    b = (b1 + b2) / 2
-                alpha[i] = ai_new
-                alpha[j] = aj_new
-                num_changed_alphas += 1
-        if num_changed_alphas == 0:
-            passes += 1
-        else:
-            passes = 0
-    return alpha, b
+                    while j == i:
+                        j = np.random.randint(0, m)
+                    E[j] = self.gamma(x[j, :]) - self.y[j]
+                    ai_old, aj_old = self.alpha[i], self.alpha[j]
+                    if y[i] != y[j]:
+                        L = max(0, self.alpha[j] - self.alpha[i])
+                        H = min(C, C + self.alpha[j] - self.alpha[i])
+                    else:
+                        L = max(0, self.alpha[i] + self.alpha[j] - C)
+                        H = min(C, self.alpha[i] + self.alpha[j])
+                    if L == H:
+                        continue
+                    eta = 2 * self.kernel(self.x[i], self.x[j]) - self.kernel(self.x[i], self.x[i]) - self.kernel(self.x[j], self.x[j])
+                    if eta >= 0:
+                        continue
+                    aj_new = aj_old - self.y[j] * (E[i] - E[j]) / eta
+                    if aj_new > H:
+                        aj_new = H
+                    elif aj_new < L:
+                        aj_new = L
+                    if abs(aj_new - aj_old) < eps:
+                        continue
+                    ai_new = ai_old + self.y[i] * self.y[j] * (aj_old - aj_new)
+                    if 0 < ai_new < C:
+                        self.b = self.b - E[i] - self.y[i] * (ai_new - ai_old) * self.kernel(self.x[i], self.x[i]) - self.y[j] * (aj_new - aj_old) * self.kernel(self.x[i], self.x[j])
+                    elif 0 < aj_new < C:
+                        self.b = self.b - E[j] - self.y[i] * (ai_new - ai_old) * self.kernel(self.x[i], self.x[j]) - self.y[j] * (aj_new - aj_old) * self.kernel(self.x[j], self.x[j])
+                    else:
+                        b1 = self.b - E[i] - self.y[i] * (ai_new - ai_old) * self.kernel(self.x[i], self.x[i]) - self.y[j] * (aj_new - aj_old) * self.kernel(self.x[i], self.x[j])
+                        b2 = self.b - E[j] - self.y[i] * (ai_new - ai_old) * self.kernel(self.x[i], self.x[j]) - self.y[j] * (aj_new - aj_old) * self.kernel(self.x[j], self.x[j])
+                        self.b = (b1 + b2) / 2
+                    self.alpha[i] = ai_new
+                    self.alpha[j] = aj_new
+                    num_changed_alphas += 1
+            if num_changed_alphas == 0:
+                passes += 1
+            else:
+                passes = 0
+        return self.alpha, self.b
+        
+
+    def _examine_example(self, j, C, tol):
+        y_j = self.y[j]
+        alpha_j = self.alpha[j]
+        self.E[j] = self.gamma(self.x[j, :]) - y_j
+        r_j = self.E[j] * y_j
+        if (r_j < -tol and alpha_j < C) or (r_j > tol and alpha_j > 0):
+            ex_not_bounds = self._check_bounds(C)
+            if len(ex_not_bounds) > 1:
+                i = self._check_bounds(j)
+
+
+    def _choose_i(self, j):
+        
+
+
+    
+    def _check_bounds(self, C): # first heuristic
+        return np.flatnonzero(np.logical_and(self.alpha > 0, self.alpha < C))
+
+
+    def complete_smo(self, C, tol, eps, max_passes):
+        self.E = self.y * -1
+        m = self.x.shape[0]
+        num_changed = 0 
+        examine_all = True
+        while num_changed > 0 or examine_all:
+            num_changed = 0
+            if examine_all:
+                for i in m:
+                    num_changed += self._examine_example(i, C, tol)
+            else: # first heuristic
+                ex_not_bounds = self._check_bounds(C) # array of indexes
+                for i in ex_not_bounds:
+                    num_changed += self._examine_example(i, C, tol)
+            if examine_all == True:
+                examine_all = False
+            elif num_changed == 0:
+                examine_all = True
 
 
 import numpy as np # imports a fast numerical programming library
@@ -158,7 +208,10 @@ print(df_x.head())
 x = np.hstack([np.ones((df_x.shape[0], 1)), df_x[["x1","x2"]].values])
 y = df_y["y"].values
 
-alpha, b = smo(1, 0.00001, 300, x, y, 0.00001)
+
+svm = SVM(x, y)
+
+alpha, b = svm.simplified_smo(C=1, tol=0.00001, eps=0.00001, max_passes=50)
 print(alpha)
 print()
 print(b)
@@ -166,7 +219,7 @@ print(b)
 print(x[98, :])
 print(y[98])
 
-print(gamma(x[98], x, y, alpha, b))
+print(svm.gamma(x[98]))
 
 
 
