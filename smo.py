@@ -74,6 +74,7 @@ class SVM:
         self.y = y
         self.alpha = None
         self.b = None
+        self.m = x.shape[0]
 
 
     def kernel(self, x_i, x_j):
@@ -143,24 +144,93 @@ class SVM:
             else:
                 passes = 0
         return self.alpha, self.b
-        
 
-    def _examine_example(self, j, C, tol):
+
+    def _compute_L_H(self, i, j, C):
+        if self.y[i] != self.y[j]:
+            L = max(0, self.alpha[j] - self.alpha[j])
+            H = min(C, C + self.alpha[j] - self.alpha[i])
+            return L, H
+        L = max(0, self.alpha[j] + self.alpha[i] - C)
+        H = min(C, self.alpha[j] + self.alpha[i])
+        return L, H
+
+
+    def take_step(self, i, j, C, eps):
+        if i == j:
+            return False
+        self.E[i] = self.gamma(self.x[i, :]) - self.y[i]
+        s = self.y[i] * self.y[j]
+        L, H = self._compute_L_H(i, j, C)
+        if L == H:
+            return False
+        eta = self.kernel(self.x[i], self.x[i]) + self.kernel(self.x[j], self.x[j]) - 2 * self.kernel(self.x[i], self.x[j]) 
+        if eta > 0:
+            aj_new = self.alpha[j] + self.y[j] * (self.E[i] - self.E[j]) / eta
+            if aj_new < L:
+                aj_new = L
+            elif aj_new > H:
+                aj_new = H 
+        else:
+            aj_old = self.alpha[j]
+            self.alpha[j] = L
+            Lobj = self.gamma(self.x[j, :])
+            self.alpha[j] = H
+            Hobj = self.gamma(self.x[j, :])
+            self.alpha[j] = aj_old
+            if Lobj < Hobj - eps:
+                aj_new = L
+            elif Lobj > Hobj + eps:
+                aj_new = H
+            else: 
+                aj_new = self.alpha[j]
+        if abs(aj_new - self.alpha[j]) < eps * (aj_new + self.alpha[j] + eps):
+            return False
+        ai_new = self.alpha[i] + s * (self.alpha[j] - aj_new)
+        if 0 < ai_new < C:
+            self.b = self.b + self.E[i] + self.y[i] * (ai_new - self.alpha[i]) * self.kernel(self.x[i], self.x[i]) +  self.y[j] * (aj_new - self.alpha[j]) * self.kernel(self.x[i], self.x[j])
+        elif 0 < aj_new < C:
+            self.b = self.b + self.E[j] + self.y[i] * (ai_new - self.alpha[i]) * self.kernel(self.x[i], self.x[j]) +  self.y[j] * (aj_new - self.alpha[j]) * self.kernel(self.x[j], self.x[j])
+        else:
+            b1 = self.b + self.E[i] + self.y[i] * (ai_new - self.alpha[i]) * self.kernel(self.x[i], self.x[i]) +  self.y[j] * (aj_new - self.alpha[j]) * self.kernel(self.x[i], self.x[j])
+            b2 = self.b + self.E[j] + self.y[i] * (ai_new - self.alpha[i]) * self.kernel(self.x[i], self.x[j]) +  self.y[j] * (aj_new - self.alpha[j]) * self.kernel(self.x[j], self.x[j])
+            self.b = (b1 + b2) / 2
+        self.E[i] = self._error(self.x[i], self.y[i])
+        self.E[j] = self._error(self.x[j], self.y[j])
+        self.alpha[i] = ai_new
+        self.alpha[j] = aj_new
+        return True
+
+
+    def _examine_example(self, j, C, tol, eps):
         y_j = self.y[j]
         alpha_j = self.alpha[j]
         self.E[j] = self.gamma(self.x[j, :]) - y_j
         r_j = self.E[j] * y_j
         if (r_j < -tol and alpha_j < C) or (r_j > tol and alpha_j > 0):
             ex_not_bounds = self._check_bounds(C)
-            if len(ex_not_bounds) > 1:
-                i = self._check_bounds(j)
+            ex_not_bounds_len =  len(ex_not_bounds)
+            if ex_not_bounds_len > 1:
+                i = self._choose_i(j)
+                if self.take_step(i, j, C, eps):
+                    return 1
+                random_point = np.random.randint(0, ex_not_bounds_len)
+                for k in range(0, ex_not_bounds_len):
+                    i = (k + random_point) % ex_not_bounds_len
+                    if self.take_step(i, j, C, eps):
+                        return 1
+                random_point = np.random.randint(0, self.m)
+                for k in range(0, self.m):
+                    i = (k + random_point) % ex_not_bounds_len
+                    if self.take_step(i, j, C, eps):
+                        return 1
+        return 0
 
 
     def _choose_i(self, j):
-        
+        return 1
 
 
-    
     def _check_bounds(self, C): # first heuristic
         return np.flatnonzero(np.logical_and(self.alpha > 0, self.alpha < C))
 
@@ -174,15 +244,16 @@ class SVM:
             num_changed = 0
             if examine_all:
                 for i in m:
-                    num_changed += self._examine_example(i, C, tol)
+                    num_changed += self._examine_example(i, C, tol, eps)
             else: # first heuristic
                 ex_not_bounds = self._check_bounds(C) # array of indexes
                 for i in ex_not_bounds:
-                    num_changed += self._examine_example(i, C, tol)
+                    num_changed += self._examine_example(i, C, tol, eps)
             if examine_all == True:
                 examine_all = False
             elif num_changed == 0:
                 examine_all = True
+        return self.alpha, self.b
 
 
 import numpy as np # imports a fast numerical programming library
@@ -226,7 +297,7 @@ print(svm.gamma(x[98]))
 from sklearn.svm import SVC
 
 
-svc = SVC(kernel='linear', tol=0.00001, max_iter=300)
+svc = SVC(kernel='linear', tol=0.00001, max_iter=50)
 svc.fit(x, y)
 test = x[98]
 test = test.reshape(1, -1)
