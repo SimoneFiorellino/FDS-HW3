@@ -6,10 +6,20 @@ import pandas as pd
 class SVM:
     
     def __init__(self, x, y, C=1, tol=0.001, eps=0.001, kernel='linear', sigma=0.45):
+        """
+        :param x -> train data
+        :param y -> train labels
+        :param C -> soft margin
+        :param tol -> tolerance 
+        :param eps -> epsilon
+        :param kernel -> either 'linear' or 'gaussian'
+        :param sigma -> variance, for gaussian kernel only
+        """
+
         self.x = x
         self.y = y
         self.alpha = None
-        self.support_vectors_ = None
+        self.support_vectors_ = None # vector of support vectors indices
         self.b = 0
         self.m = x.shape[0]
         self.C = C
@@ -24,10 +34,20 @@ class SVM:
 
 
     def _check_bounds(self):
+        """
+        Check if the KKT conditions are met. 
+        
+        Return the indices of the points inside the margin 
+        """
+
         return np.flatnonzero(np.logical_and(self.alpha > 0, self.alpha < self.C))
 
 
     def _compute_L_H(self, i, j):
+        """
+        Compute L and H according to the formulation in Platt's paper
+        """
+
         if self.y[i] != self.y[j]:
             L = max(0, self.alpha[j] - self.alpha[j])
             H = min(self.C, self.C + self.alpha[j] - self.alpha[i])
@@ -38,6 +58,12 @@ class SVM:
 
 
     def _examine_example(self, j):
+        """
+        Search for alphas to be optimized
+
+        Return either changed (1) or unchanged (0)
+        """
+
         self.E[j] = self._error(j)
         r_j = self.E[j] * self.y[j]
         if (r_j < -self.tol and self.alpha[j] < self.C) or (r_j > self.tol and self.alpha[j] > 0):
@@ -46,7 +72,7 @@ class SVM:
             if non_0_C_len > 1:
                 if self._second_heuristicA(j, non_0_C):
                     return 1
-                if self._second_heuristicB(j, non_0_C_len):
+                if self._second_heuristicB(j, non_0_C_len, non_0_C):
                     return 1
             if self._second_heuristicB(j, self.m):
                 return 1
@@ -54,10 +80,22 @@ class SVM:
 
 
     def _error(self, i):
+        """
+        Compute the error of the prediction as (prediction - ground-truth label)
+
+        Return the error (scalar)
+        """
+
         return self.decision_function(self.x[i]) - self.y[i]
 
 
     def _first_heuristic(self, num_changed):
+        """
+        First heuristic according to Platt's paper
+
+        Return the number of alphas changed
+        """
+
         ex_not_bounds = self._check_bounds() # array of indexes
         for i in ex_not_bounds:
             num_changed += self._examine_example(i)
@@ -65,18 +103,31 @@ class SVM:
 
 
     def _get_support_vectors(self):
+        """
+        Get the indexes of the support vectors
+
+        Return numpy.array of indexes
+        """
+
         if self.support_vectors_ is None:
             return np.flatnonzero(self.alpha != 0)
         return self.support_vectors_
 
 
     def _initialize_parameters(self):
+        """
+        Initialize parameters before optimization
+        """
+
         self.alpha = np.zeros((self.m, 1))
         self.b = 0
-        self.E = self.y * -1
+        self.E = self.y * -1 # result of the decision function with all alphas equal to zero
 
 
     def _main_smo_fun(self):
+        """
+        Main routine of the SMO algorithm
+        """
 
         self._initialize_parameters()
         num_changed = 0 
@@ -97,6 +148,12 @@ class SVM:
 
 
     def _objective_function(self):
+        """
+        Objective function of the dual representation
+
+        Return the value of the objective function (scalar) 
+        """
+
         support_vectors_idxs = self._get_support_vectors()
         result = 0
         for i in support_vectors_idxs:
@@ -107,8 +164,12 @@ class SVM:
 
 
     def _second_heuristicA(self, j, non_bounds):
+        """
+        Search for the candidate alpha that maximizes the in-step progress
+        """
+
         if self.E[j] > 0:
-            i= np.argmin(self.E[non_bounds])
+            i = np.argmin(self.E[non_bounds])
         else:
             i = np.argmax(self.E[non_bounds])
         if self._take_step(i, j):
@@ -116,14 +177,26 @@ class SVM:
         return False
 
 
-    def _second_heuristicB(self, j, s_len):
-        for i in np.roll(np.arange(0, s_len), np.random.randint(0, s_len)):
+    def _second_heuristicB(self, j, s_len, arr=None):
+        """
+        Search systematically the alphas 
+        """
+
+        if arr is None:
+            arr = np.arange(0, s_len)
+        for i in np.roll(arr, np.random.randint(0, s_len)):
             if self._take_step(i, j):
                 return True
         return False
 
 
     def _take_step(self, i, j):
+        """
+        Compute the optimzation step and update the parameters
+
+        Return True or False
+        """
+
         if i == j:
             return False
 
@@ -171,6 +244,12 @@ class SVM:
 
 
     def decision_function(self, x):
+        """
+        Compute the decision function sum(y @ alpha * kernel) - b
+
+        Return scalar
+        """
+
         u = 0
         support_vectors_idxs = self._get_support_vectors()
         for i in support_vectors_idxs:
@@ -180,15 +259,29 @@ class SVM:
 
 
     def fit(self):
+        """
+        Fit the data and start parameters optimization
+        """
+
         self._main_smo_fun()
         self.support_vectors_ = self._get_support_vectors()
 
     
-    def predict(self, x): 
+    def predict(self, x):
+        """
+        Predict the class given the input x
+
+        Return either 1 or -1
+        """ 
+
         return int(np.sign(self.decision_function(x)))
 
 
     def support_vectors(self):
+        """
+        Return the alphas of the support vectors
+        """
+        
         return self.alpha[self.support_vectors_]
 
 
