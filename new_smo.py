@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+from tqdm import tqdm
 
 
 class SVM:
@@ -132,19 +132,20 @@ class SVM:
         self._initialize_parameters()
         num_changed = 0 
         examine_all = True
+        with tqdm() as pbar:
+            while num_changed > 0 or examine_all:
+                num_changed = 0
+                if examine_all:
+                    for i in range(self.m):
+                        num_changed += self._examine_example(i)
+                else:
+                    num_changed = self._first_heuristic(num_changed)
 
-        while num_changed > 0 or examine_all:
-            num_changed = 0
-            if examine_all:
-                for i in range(self.m):
-                    num_changed += self._examine_example(i)
-            else:
-                num_changed = self._first_heuristic(num_changed)
-
-            if examine_all == True:
-                examine_all = False
-            elif num_changed == 0:
-                examine_all = True
+                if examine_all == True:
+                    examine_all = False
+                elif num_changed == 0:
+                    examine_all = True
+                pbar.update(1)
 
 
     def _objective_function(self):
@@ -281,7 +282,7 @@ class SVM:
         """
         Return the alphas of the support vectors
         """
-        
+
         return self.alpha[self.support_vectors_]
 
 
@@ -312,14 +313,14 @@ x_test = test_set.to_numpy()
 y_train = labels_train.to_numpy()
 y_test = labels_test.to_numpy()
 
-svm = SVM(x_train, y_train, kernel='linear', C=1, tol=0.001, eps=0.001)
+svm = SVM(x_train[:, :10], y_train, kernel='gaussian', C=1, tol=0.001, eps=0.001)
 
 t0 = time.time()
 svm.fit()
 
 predictions_list = []
 for i in range(y_test.shape[0]):
-    predictions_list.append(svm.predict(x_test[i]))
+    predictions_list.append(svm.predict(x_test[i, :10]))
 predictions = np.array(predictions_list)
 
 t = time.time()
