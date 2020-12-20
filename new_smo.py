@@ -31,6 +31,7 @@ class SVM:
             'gaussian': lambda x_i, x_j: np.exp(- np.square(np.linalg.norm(x_i - x_j)) / 2*(sigma**2))
         }
         self.kernel = kernel_type[kernel]
+        self.kernel_cache = {}
 
 
     def _check_bounds(self):
@@ -49,7 +50,7 @@ class SVM:
         """
 
         if self.y[i] != self.y[j]:
-            L = max(0, self.alpha[j] - self.alpha[j])
+            L = max(0, self.alpha[j] - self.alpha[i])
             H = min(self.C, self.C + self.alpha[j] - self.alpha[i])
             return L, H
         L = max(0, self.alpha[j] + self.alpha[i] - self.C)
@@ -64,8 +65,8 @@ class SVM:
         Return either changed (1) or unchanged (0)
         """
 
-        self.E[j] = self._error(j)
-        r_j = self.E[j] * self.y[j]
+        self.E_j = self._get_error(j)
+        r_j = self.E_j * self.y[j]
         if (r_j < -self.tol and self.alpha[j] < self.C) or (r_j > self.tol and self.alpha[j] > 0):
             non_0_C = self._check_bounds()
             non_0_C_len =  len(non_0_C)
@@ -86,7 +87,7 @@ class SVM:
         Return the error (scalar)
         """
 
-        return self.decision_function(self.x[i]) - self.y[i]
+        return self.decision_function(i) - self.y[i]
 
 
     def _first_heuristic(self, num_changed):
@@ -100,6 +101,13 @@ class SVM:
         for i in ex_not_bounds:
             num_changed += self._examine_example(i)
         return num_changed
+
+
+    def _get_error(self, i):
+        if 0 < self.alpha[i] < self.C:
+            return self.E[i]
+        else:
+            return self.decision_function(i) - self.y[i]
 
 
     def _get_support_vectors(self):
@@ -121,7 +129,23 @@ class SVM:
 
         self.alpha = np.zeros((self.m, 1))
         self.b = 0
-        self.E = self.y * -1 # result of the decision function with all alphas equal to zero
+        self.E = np.zeros((self.m, 1)) # result of the decision function with all alphas equal to zero
+
+
+    def _kernel(self, i, j):
+        """
+        Check if the value of the kernel for i and j have been already calculated.
+        If so, then skip the computation and return the value, 
+        else calculate and return the value
+
+        Return scalar
+        """
+
+        if (i,j) in self.kernel_cache:
+            return self.kernel_cache[(i,j)]
+        else:
+            self.kernel_cache[(i,j)] = self.kernel(self.x[i], self.x[j])
+            return self.kernel_cache[(i,j)]
 
 
     def _main_smo_fun(self):
@@ -159,7 +183,7 @@ class SVM:
         result = 0
         for i in support_vectors_idxs:
             for j in support_vectors_idxs:
-                result += self.y[i] * self.y[j] * self.alpha[i] * self.alpha[j] * self.kernel(self.x[i], self.x[j])
+                result += self.y[i] * self.y[j] * self.alpha[i] * self.alpha[j] * self._kernel(i, j)
         result = 0.5 * result - np.sum(self.alpha[support_vectors_idxs])
         return result
 
@@ -169,7 +193,7 @@ class SVM:
         Search for the candidate alpha that maximizes the in-step progress
         """
 
-        if self.E[j] > 0:
+        if self.E_j > 0:
             i = np.argmin(self.E[non_bounds])
         else:
             i = np.argmax(self.E[non_bounds])
@@ -201,25 +225,25 @@ class SVM:
         if i == j:
             return False
 
-        self.E[i] = self.predict(self.x[i, :]) - self.y[i]
+        E_i = self._get_error(i)
         s = self.y[i] * self.y[j]
         L, H = self._compute_L_H(i, j)
         if L == H:
             return False
-        eta = self.kernel(self.x[i], self.x[i]) + self.kernel(self.x[j], self.x[j]) - 2 * self.kernel(self.x[i], self.x[j]) 
+        eta = self._kernel(i, i) + self._kernel(j, j) - 2 * self._kernel(i, j) 
         if eta > 0:
-            aj_new = self.alpha[j] + self.y[j] * (self.E[i] - self.E[j]) / eta
+            aj_new = self.alpha[j] + self.y[j] * (E_i - self.E_j) / eta
             if aj_new < L: 
                 aj_new = L
             elif aj_new > H:
                 aj_new = H 
         else:
-            aj_old = self.alpha[j]
-            self.alpha[j] = L
-            Lobj = self._objective_function()
-            self.alpha[j] = H
-            Hobj = self._objective_function()
-            self.alpha[j] = aj_old
+            f1 = self.y[i] * (E_i + self.b) - self.alpha[i] * self._kernel(i,i) - s * self.alpha[j] * self._kernel(i,j)
+            f2 = self.y[j] * (self.E_j + self.b) - s * self.alpha[i] * self._kernel(i,j) - self.alpha[j] * self._kernel(j,j)
+            L1 = self.alpha[i] + s * (self.alpha[j] - L)
+            H1 = self.alpha[i] + s * (self.alpha[j] - H)
+            Lobj = L1 * f1 + L * f2 + 0.5 * L1**2 * self._kernel(i,i) + 0.5 * L**2 * self._kernel(j,j) + s * L * L1 * self._kernel(i,j)
+            Hobj = H1 * f1 + H * f2 + 0.5 * H1**2 * self._kernel(i,i) + 0.5 * H**2 * self._kernel(j,j) * s * H * H1 * self._kernel(i,j)
             if Lobj < Hobj - self.eps:
                 aj_new = L
             elif Lobj > Hobj + self.eps:
@@ -229,22 +253,29 @@ class SVM:
         if abs(aj_new - self.alpha[j]) < (self.eps * (aj_new + self.alpha[j] + self.eps)):
             return False
         ai_new = self.alpha[i] + s * (self.alpha[j] - aj_new)
+        b_old = self.b
         if 0 < ai_new < self.C:
-            self.b = self.b + self.E[i] + self.y[i] * (ai_new - self.alpha[i]) * self.kernel(self.x[i], self.x[i]) + self.y[j] * (aj_new - self.alpha[j]) * self.kernel(self.x[i], self.x[j])
+            self.b = self.b + E_i + self.y[i] * (ai_new - self.alpha[i]) * self._kernel(i, i) + self.y[j] * (aj_new - self.alpha[j]) * self._kernel(i, j)
         elif 0 < aj_new < self.C:
-            self.b = self.b + self.E[j] + self.y[i] * (ai_new - self.alpha[i]) * self.kernel(self.x[i], self.x[j]) + self.y[j] * (aj_new - self.alpha[j]) * self.kernel(self.x[j], self.x[j])
+            self.b = self.b + self.E_j + self.y[i] * (ai_new - self.alpha[i]) * self._kernel(i, j) + self.y[j] * (aj_new - self.alpha[j]) * self._kernel(j, j)
         else:
-            b1 = self.b + self.E[i] + self.y[i] * (ai_new - self.alpha[i]) * self.kernel(self.x[i], self.x[i]) + self.y[j] * (aj_new - self.alpha[j]) * self.kernel(self.x[i], self.x[j])
-            b2 = self.b + self.E[j] + self.y[i] * (ai_new - self.alpha[i]) * self.kernel(self.x[i], self.x[j]) + self.y[j] * (aj_new - self.alpha[j]) * self.kernel(self.x[j], self.x[j])
+            b1 = self.b + E_i + self.y[i] * (ai_new - self.alpha[i]) * self._kernel(i, i) + self.y[j] * (aj_new - self.alpha[j]) * self._kernel(i, j)
+            b2 = self.b + self.E_j + self.y[i] * (ai_new - self.alpha[i]) * self._kernel(i, j) + self.y[j] * (aj_new - self.alpha[j]) * self._kernel(j, j)
             self.b = (b1 + b2) / 2
+        delta_i = self.y[i] * (ai_new - self.alpha[i])
+        delta_j = self.y[j] * (aj_new - self.alpha[j])
+        delta_b = self.b - b_old
+        for k in range(self.m):
+            if 0 < self.alpha[k] < self.C:
+                self.E[k] += delta_i * self._kernel(k,i) + delta_j * self._kernel(j,k) - delta_b
         self.alpha[i] = ai_new
         self.alpha[j] = aj_new
-        self.E[i] = self._error(i)
-        self.E[j] = self._error(j)
+        self.E[i] = 0
+        self.E[j] = 0
         return True
 
 
-    def decision_function(self, x):
+    def decision_function(self, sample):
         """
         Compute the decision function sum(y @ alpha * kernel) - b
 
@@ -253,8 +284,12 @@ class SVM:
 
         u = 0
         support_vectors_idxs = self._get_support_vectors()
-        for i in support_vectors_idxs:
-            u += self.y[i] * self.alpha[i] * self.kernel(self.x[i], x)
+        if isinstance(sample, (int, np.int)):
+            for i in support_vectors_idxs:
+                u += self.y[i] * self.alpha[i] * self._kernel(i, sample) # use kernel caching
+        else:
+            for i in support_vectors_idxs:
+                u += self.y[i] * self.alpha[i] * self.kernel(self.x[i], sample) # sample is a numpy array
         u = u - self.b
         return u
 
@@ -313,13 +348,13 @@ x_test = test_set.to_numpy()
 y_train = labels_train.to_numpy()
 y_test = labels_test.to_numpy()
 
-svm = SVM(x_train[:, :10], y_train, kernel='gaussian', C=1, tol=0.001, eps=0.001)
+svm = SVM(x_train[300:, :10], y_train, kernel='gaussian', C=1, tol=0.001, eps=0.001)
 
 t0 = time.time()
 svm.fit()
 
 predictions_list = []
-for i in range(y_test.shape[0]):
+for i in range(300):
     predictions_list.append(svm.predict(x_test[i, :10]))
 predictions = np.array(predictions_list)
 
@@ -327,11 +362,6 @@ t = time.time()
 
 print(np.sum(np.equal(predictions, y_test)))
 print(f'\nTime taken: {t - t0}')
-
-# print(f'Predicted: {svm.predict(x[95])}\tGround truth: {y[95]}\n')
-# print(f'Decision function: {svm.decision_function(x[95])}')
-# print(f'Errors: {svm.E}')
-
 
 # df_x = pd.read_csv("./data/logistic_x.txt", sep=" +", names=["x1","x2"], header=None, engine='python')
 # df_y = pd.read_csv('./data/logistic_y.txt', sep=' +', names=["y"], header=None, engine='python')
@@ -342,7 +372,7 @@ print(f'\nTime taken: {t - t0}')
 
 # # np.random.seed(17349)
 
-# svm = SVM(x, y, kernel='gaussian', C=0.5, tol=0.001, eps=0.001)
+# svm = SVM(x, y, kernel='gaussian', C=1, tol=0.001, eps=0.001)
 
 # svm.fit()
 
