@@ -243,7 +243,7 @@ class SVM:
             L1 = self.alpha[i] + s * (self.alpha[j] - L)
             H1 = self.alpha[i] + s * (self.alpha[j] - H)
             Lobj = L1 * f1 + L * f2 + 0.5 * L1**2 * self._kernel(i,i) + 0.5 * L**2 * self._kernel(j,j) + s * L * L1 * self._kernel(i,j)
-            Hobj = H1 * f1 + H * f2 + 0.5 * H1**2 * self._kernel(i,i) + 0.5 * H**2 * self._kernel(j,j) * s * H * H1 * self._kernel(i,j)
+            Hobj = H1 * f1 + H * f2 + 0.5 * H1**2 * self._kernel(i,i) + 0.5 * H**2 * self._kernel(j,j) + s * H * H1 * self._kernel(i,j)
             if Lobj < Hobj - self.eps:
                 aj_new = L
             elif Lobj > Hobj + self.eps:
@@ -267,11 +267,11 @@ class SVM:
         delta_b = self.b - b_old
         for k in range(self.m):
             if 0 < self.alpha[k] < self.C:
-                self.E[k] += delta_i * self._kernel(k,i) + delta_j * self._kernel(j,k) - delta_b
-        self.alpha[i] = ai_new
-        self.alpha[j] = aj_new
+                self.E[k] += delta_i * self._kernel(i,k) + delta_j * self._kernel(j,k) - delta_b
         self.E[i] = 0
         self.E[j] = 0
+        self.alpha[i] = ai_new
+        self.alpha[j] = aj_new
         return True
 
 
@@ -323,62 +323,62 @@ class SVM:
 
 
 
-import time
+# import time
 
-train_set = pd.read_csv('./data/train.csv')
-test_set = pd.read_csv('./data/test.csv')
+# train_set = pd.read_csv('./data/train.csv')
+# test_set = pd.read_csv('./data/test.csv')
 
-train_set.drop('subject', axis=1, inplace=True)
-test_set.drop('subject', axis=1, inplace=True)
+# train_set.drop('subject', axis=1, inplace=True)
+# test_set.drop('subject', axis=1, inplace=True)
 
-labels_train = train_set.Activity
-labels_test = test_set.Activity
+# labels_train = train_set.Activity
+# labels_test = test_set.Activity
 
-train_set.drop('Activity', axis=1, inplace=True)
-test_set.drop('Activity', axis=1, inplace=True)
+# train_set.drop('Activity', axis=1, inplace=True)
+# test_set.drop('Activity', axis=1, inplace=True)
 
-numeric_labels = {'STANDING':-1, 'SITTING':1, 'LAYING':1, 'WALKING':1, 'WALKING_DOWNSTAIRS':1, 'WALKING_UPSTAIRS':1}
-labels_train = labels_train.map(lambda x: numeric_labels[x])
-labels_test = labels_test.map(lambda x: numeric_labels[x])
+# numeric_labels = {'STANDING':-1, 'SITTING':1, 'LAYING':1, 'WALKING':1, 'WALKING_DOWNSTAIRS':1, 'WALKING_UPSTAIRS':1}
+# labels_train = labels_train.map(lambda x: numeric_labels[x])
+# labels_test = labels_test.map(lambda x: numeric_labels[x])
 
 
-x_train = train_set.to_numpy()
-x_test = test_set.to_numpy()
+# x_train = train_set.to_numpy()
+# x_test = test_set.to_numpy()
 
-y_train = labels_train.to_numpy()
-y_test = labels_test.to_numpy()
+# y_train = labels_train.to_numpy()
+# y_test = labels_test.to_numpy()
 
-svm = SVM(x_train[300:, :10], y_train, kernel='gaussian', C=1, tol=0.001, eps=0.001)
+# svm = SVM(x_train[300:, :10], y_train, kernel='gaussian', C=1, tol=0.001, eps=0.001)
 
-t0 = time.time()
-svm.fit()
-
-predictions_list = []
-for i in range(300):
-    predictions_list.append(svm.predict(x_test[i, :10]))
-predictions = np.array(predictions_list)
-
-t = time.time()
-
-print(np.sum(np.equal(predictions, y_test)))
-print(f'\nTime taken: {t - t0}')
-
-# df_x = pd.read_csv("./data/logistic_x.txt", sep=" +", names=["x1","x2"], header=None, engine='python')
-# df_y = pd.read_csv('./data/logistic_y.txt', sep=' +', names=["y"], header=None, engine='python')
-# df_y = df_y.astype(int)
-
-# x = np.hstack([np.ones((df_x.shape[0], 1)), df_x[["x1","x2"]].values])
-# y = df_y["y"].values
-
-# # np.random.seed(17349)
-
-# svm = SVM(x, y, kernel='gaussian', C=1, tol=0.001, eps=0.001)
-
+# t0 = time.time()
 # svm.fit()
 
 # predictions_list = []
-# for i in range(99):
-#     predictions_list.append(svm.predict(x[i]))
+# for i in range(300):
+#     predictions_list.append(svm.predict(x_test[i, :10]))
 # predictions = np.array(predictions_list)
-# print(predictions)
-# print(np.sum(np.equal(predictions, y)))
+
+# t = time.time()
+
+# print(np.sum(np.equal(predictions, y_test)))
+# print(f'\nTime taken: {t - t0}')
+
+df_x = pd.read_csv("./data/logistic_x.txt", sep=" +", names=["x1","x2"], header=None, engine='python')
+df_y = pd.read_csv('./data/logistic_y.txt', sep=' +', names=["y"], header=None, engine='python')
+df_y = df_y.astype(int)
+
+x = np.hstack([np.ones((df_x.shape[0], 1)), df_x[["x1","x2"]].values])
+y = df_y["y"].values
+
+# np.random.seed(17349)
+
+svm = SVM(x, y, kernel='gaussian', C=1, tol=0.001, eps=0.001)
+
+svm.fit()
+
+predictions_list = []
+for i in range(99):
+    predictions_list.append(svm.predict(x[i]))
+predictions = np.array(predictions_list)
+print(predictions)
+print(np.sum(np.equal(predictions, y)))
