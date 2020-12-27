@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 class SVM:
     
-    def __init__(self, x, y, C=1, tol=0.001, eps=0.001, kernel='linear', sigma=0.45):
+    def __init__(self, x, y, C=1, tol=0.1, eps=0.001, kernel='linear', sigma=0.45):
         """
         :param x -> train data
         :param y -> train labels
@@ -228,8 +228,10 @@ class SVM:
         E_i = self._get_error(i)
         s = self.y[i] * self.y[j]
         L, H = self._compute_L_H(i, j)
+        
         if L == H:
             return False
+
         eta = self._kernel(i, i) + self._kernel(j, j) - 2 * self._kernel(i, j) 
         if eta > 0:
             aj_new = self.alpha[j] + self.y[j] * (E_i - self.E_j) / eta
@@ -322,47 +324,6 @@ class SVM:
 
 
 
-
-# import time
-
-# train_set = pd.read_csv('./data/train.csv')
-# test_set = pd.read_csv('./data/test.csv')
-
-# train_set.drop('subject', axis=1, inplace=True)
-# test_set.drop('subject', axis=1, inplace=True)
-
-# labels_train = train_set.Activity
-# labels_test = test_set.Activity
-
-# train_set.drop('Activity', axis=1, inplace=True)
-# test_set.drop('Activity', axis=1, inplace=True)
-
-# numeric_labels = {'STANDING':-1, 'SITTING':1, 'LAYING':1, 'WALKING':1, 'WALKING_DOWNSTAIRS':1, 'WALKING_UPSTAIRS':1}
-# labels_train = labels_train.map(lambda x: numeric_labels[x])
-# labels_test = labels_test.map(lambda x: numeric_labels[x])
-
-
-# x_train = train_set.to_numpy()
-# x_test = test_set.to_numpy()
-
-# y_train = labels_train.to_numpy()
-# y_test = labels_test.to_numpy()
-
-# svm = SVM(x_train[300:, :10], y_train, kernel='gaussian', C=1, tol=0.001, eps=0.001)
-
-# t0 = time.time()
-# svm.fit()
-
-# predictions_list = []
-# for i in range(300):
-#     predictions_list.append(svm.predict(x_test[i, :10]))
-# predictions = np.array(predictions_list)
-
-# t = time.time()
-
-# print(np.sum(np.equal(predictions, y_test)))
-# print(f'\nTime taken: {t - t0}')
-
 df_x = pd.read_csv("./data/logistic_x.txt", sep=" +", names=["x1","x2"], header=None, engine='python')
 df_y = pd.read_csv('./data/logistic_y.txt', sep=' +', names=["y"], header=None, engine='python')
 df_y = df_y.astype(int)
@@ -370,7 +331,6 @@ df_y = df_y.astype(int)
 x = np.hstack([np.ones((df_x.shape[0], 1)), df_x[["x1","x2"]].values])
 y = df_y["y"].values
 
-# np.random.seed(17349)
 
 svm = SVM(x, y, kernel='gaussian', C=1, tol=0.001, eps=0.001)
 
